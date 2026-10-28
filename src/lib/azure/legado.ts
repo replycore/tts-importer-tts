@@ -1,0 +1,132 @@
+import genName from "@/lib/azure/config-name";
+import {
+  azureStateSchema,
+  dedupeSpeakerStyle,
+  type AzureState,
+  type voiceConfigSchema,
+} from "./schema";
+import z from "zod";
+
+export const DEFAULT_AZURE_RATE_TEMPLATE = "{{speakSpeed/10}}";
+
+function buildSSML(
+  { shortName, style }: { shortName: string; style: string | null },
+  shared: z.infer<typeof voiceConfigSchema>["shared"],
+  rateTemplate: string
+) {
+  const usePitch = shared.pitch && shared.pitch !== "default";
+
+  const ssml =
+    `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="zh-CN">` +
+    `<voice name="${shortName}">` +
+    `<prosody rate="${rateTemplate}" ${
+      usePitch ? `pitch="${shared.pitch}"` : ""
+    }>` +
+    `${style ? `<mstts:express-as style="${style}">` : ""}` +
+    `{{speakText}}` +
+    `${style ? `</mstts:express-as>` : ""}` +
+    `</prosody></voice></speak>`;
+  return ssml;
+}
+
+function buildConfig(
+  {
+    shortName,
+    localName,
+    style,
+  }: { shortName: string; style: string | null; localName: string },
+  shared: z.infer<typeof voiceConfigSchema>["shared"],
+  api: AzureState["api"],
+  getId: () => number,
+  rateTemplate: string
+) {
+  const ssml = buildSSML({ shortName, style }, shared, rateTemplate);
+  const header = {
+    "Ocp-Apim-Subscription-Key": api.key,
+    "Content-Type": "application/ssml+xml",
+    "X-Microsoft-OutputFormat": shared.format,
+    "User-Agent": shared.customUA ?? "legado",
+  };
+
+  const urlConfig = {
+    method: "POST",
+    body: ssml,
+    headers: header,
+  };
+
+  const config = {
+    concurrentRate: "0",
+    contentType: "audio/mpeg",
+    header: JSON.stringify(header),
+    id: getId(),
+    loginCheckJs: "",
+    loginUi: "",
+    loginUrl: "",
+    name: genName(localName, style),
+    url: `https://${
+      api.region
+    }.tts.speech.microsoft.com/cognitiveservices/v1,${JSON.stringify(
+      urlConfig
+    )}`,
+  };
+
+  return config;
+}
+
+/**
+ * @param state - AzureState
+ * @param rateTemplate - Optional rate template for the prosody rate attribute. Defaults to DEFAULT_AZURE_RATE_TEMPLATE.
+ * @returns legado config
+ * @throws {ZodError} if the state is invalid
+ */
+export default function legadoConfig(state: AzureState, rateTemplate?: string) {
+  const { api, voice: voiceConfig } = azureStateSchema.parse(state);
+  const rate = rateTemplate || DEFAULT_AZURE_RATE_TEMPLATE;
+
+  function idFactory() {
+    let start = Math.floor(Date.now() / 1000) * 1000;
+    function getId() {
+      return start++;
+    }
+    return getId;
+  }
+  const getId = idFactory();
+
+  if (voiceConfig.speakerConfig.type !== "single") {
+    const configs = voiceConfig.speakerConfig.speakers
+      .map((speaker) =>
+        dedupeSpeakerStyle(speaker.style).map((style) => {
+          return buildConfig(
+            {
+              shortName: speaker.name,
+              localName: speaker.localName,
+              style,
+            },
+            voiceConfig.shared,
+            api,
+            getId,
+            rate
+          );
+        })
+      )
+      .flat();
+    return JSON.stringify(configs);
+  } else {
+    const speaker = voiceConfig.speakerConfig.speaker;
+    return JSON.stringify(
+      dedupeSpeakerStyle(speaker.style).map((style) =>
+        buildConfig(
+          {
+            shortName: speaker.name,
+            localName: speaker.localName,
+            style,
+          },
+          voiceConfig.shared,
+          api,
+          getId,
+          rate
+        )
+      )
+    );
+  }
+}

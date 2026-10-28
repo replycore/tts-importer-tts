@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm tsc:*)",
+      "Bash(pnpm vitest run:*)",
+      "mcp__next-devtools__browser_eval"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

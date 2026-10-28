@@ -1,0 +1,21 @@
+{
+  "cSpell.words": [
+    "contentlayer",
+    "ifreetime",
+    "Ireadnote",
+    "Legado",
+    "mstts",
+    "nuqs",
+    "Oneline",
+    "posthog",
+    "qrcode",
+    "sonner",
+    "sourcereader",
+    "ssml",
+    "Topbar"
+  ],
+  "typescript.preferences.autoImportFileExcludePatterns": [
+    "lucide-react"
+  ],
+  "typescript.tsdk": "node_modules/typescript/lib"
+}

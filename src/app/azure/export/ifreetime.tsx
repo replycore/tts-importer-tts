@@ -1,0 +1,182 @@
+"use client";
+import type { VoiceConfig, ApiConfig } from "@/lib/azure/schema";
+import { useCopyToClipboard } from "@/hooks/use-clipboard";
+import genIfreetimeConfig from "@/lib/azure/ifreetime";
+import { useMemo } from "react";
+import { Button } from "@/components/ui/button";
+import { QrCodeIcon, CircleHelp } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { config2urlNoThrow } from "@/lib/azure/config-to-url";
+import { Separator } from "@/components/ui/separator";
+import { QRCodeSVG } from "qrcode.react";
+import { ActionLine } from "@/app/azure/export/action-line";
+import Link from "next/link";
+import { posthog } from "posthog-js";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ErrorBoundary } from "next/dist/client/components/error-boundary";
+
+export function IFreeTimeExport({
+  api,
+  voice,
+}: {
+  api: ApiConfig;
+  voice: VoiceConfig;
+}) {
+  const copy = useCopyToClipboard();
+
+  const ifreetimeConfig = useMemo(() => {
+    return genIfreetimeConfig({ api, voice });
+  }, [api, voice]);
+
+  const configUrl = config2urlNoThrow(
+    { api, voice },
+    window.location.origin,
+    "/api/ifreetime"
+  );
+  if (configUrl instanceof Error) {
+    return <p>{configUrl.message}</p>;
+  }
+
+  const directUrl = `iReadNote://import/itts=${configUrl}`;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <ActionLine
+        action="二维码导入"
+        description="使用装有爱阅记的设备扫描二维码"
+      >
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                posthog.capture("one-click export QR code open", {
+                  type: "azure",
+                  app: "ifreetime",
+                });
+              }}
+            >
+              <QrCodeIcon />
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>二维码导入</DialogTitle>
+              <DialogDescription>使用系统相机扫描二维码即可</DialogDescription>
+            </DialogHeader>
+            <div className="grid p-4 place-items-center">
+              <ErrorBoundary
+                errorComponent={() => <p>导入链接过长，无法生成二维码</p>}
+              >
+                <QRCodeSVG value={directUrl} size={256} />
+              </ErrorBoundary>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </ActionLine>
+      <Separator />
+
+      <ActionLine action="一键导入" description="在装有爱阅记的设备上点击">
+        <Button asChild>
+          <a
+            href={directUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => {
+              posthog.capture("profile exported", {
+                type: "azure",
+                app: "ifreetime",
+                method: "one-click-export-button-click",
+              });
+            }}
+          >
+            导入
+          </a>
+        </Button>
+      </ActionLine>
+      <Separator />
+      <ActionLine action="配置链接" description="可用于调试输出">
+        <Button
+          onClick={() => {
+            copy(configUrl);
+            posthog.capture("profile exported", {
+              type: "azure",
+              app: "ifreetime",
+              method: "copy-profile-url",
+            });
+          }}
+        >
+          复制链接
+        </Button>
+      </ActionLine>
+      <Separator />
+
+      <ActionLine action="配置文本">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon">
+              <CircleHelp />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="space-y-2">
+            <p>
+              <span className="font-semibold">爱阅记导入：</span>
+              <br />
+              <span className="text-muted-foreground">
+                复制后粘贴在「设置-听书-在线语音库管理-右上角三点-JSON 输入」中
+              </span>
+            </p>
+            <p>
+              <span className="font-semibold">爱阅书香使用：</span>
+              <br />
+              <span className="text-muted-foreground">
+                参考
+                <Link href="/help/ifreetime" className="text-blue-500">
+                  爱阅系列使用说明
+                </Link>
+              </span>
+            </p>
+          </PopoverContent>
+        </Popover>
+        <Button
+          onClick={() => {
+            copy(ifreetimeConfig);
+            posthog.capture("profile exported", {
+              type: "azure",
+              app: "ifreetime",
+              method: "copy-profile",
+            });
+          }}
+        >
+          复制
+        </Button>
+      </ActionLine>
+      <Separator />
+
+      <p className="text-sm text-gray-500">
+        由于爱阅书香限制，无法同时导入多个语音风格。
+        <br />
+        当导入单个语音时，只会导入最先选中的语音风格；当导入多个语音时（全部中文/全部），对于每个语音只会导入不含语音风格的版本。
+      </p>
+      <p className="text-sm text-gray-500">
+        爱阅书香用户请查看
+        <Link href="/help/ifreetime" className="text-blue-500">
+          爱阅系列使用说明
+        </Link>
+        手动导入
+      </p>
+    </div>
+  );
+}

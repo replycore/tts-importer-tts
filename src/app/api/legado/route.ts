@@ -1,0 +1,32 @@
+import { url2config } from "@/lib/azure/config-to-url";
+import legadoConfig from "@/lib/azure/legado";
+import PostHogClient from "@/lib/posthog-server";
+
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const result = url2config(url);
+  if (result.success) {
+    const posthog = PostHogClient();
+    posthog?.capture({
+      event: "remote profile generated",
+      distinctId: request.headers.get("x-forwarded-for") ?? "unknown",
+      properties: {
+        type: "azure",
+        app: "legado",
+        ua: request.headers.get("user-agent") ?? "unknown",
+      },
+    });
+    posthog?.shutdown();
+    const rateTemplate = url.searchParams.get("rate-template") ?? undefined;
+    return new Response(legadoConfig(result.data, rateTemplate), {
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+  } else {
+    console.error(result.error);
+    return new Response("Bad Request", {
+      status: 400,
+    });
+  }
+}
